@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.eggs/
+*.egg-info/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Test reports (generated locally — CI uploads these as artifacts)
+tests/orangehrm_login/reports/
+
+# WebDriver cache
+.wdm/
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user
+
+# OS
+.DS_Store
+Thumbs.db

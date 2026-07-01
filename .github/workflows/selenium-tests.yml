@@ -1,0 +1,127 @@
+name: OrangeHRM Login Tests
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'tests/orangehrm_login/**'
+      - '.github/workflows/selenium-tests.yml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'tests/orangehrm_login/**'
+      - '.github/workflows/selenium-tests.yml'
+  workflow_dispatch:          # Allow manual trigger from GitHub UI
+    inputs:
+      category:
+        description: 'Test category to run (leave blank for all)'
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - positive
+          - negative
+          - boundary
+          - security
+          - ux
+
+jobs:
+  test:
+    name: Run Selenium Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+        python-version: [ '3.11' ]
+
+    defaults:
+      run:
+        working-directory: tests/orangehrm_login
+
+    steps:
+      # ── Checkout ─────────────────────────────────────────────────────────────
+      - name: ⬇️ Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Python ───────────────────────────────────────────────────────────────
+      - name: 🐍 Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: tests/orangehrm_login/requirements.txt
+
+      # ── Chrome (Linux only — Windows runner has Chrome pre-installed) ────────
+      - name: 🌐 Install Google Chrome (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
+          sudo apt-get update -y
+          sudo apt-get install -y google-chrome-stable
+
+      # ── Dependencies ─────────────────────────────────────────────────────────
+      - name: 📦 Install Python dependencies
+        run: pip install -r requirements.txt
+
+      # ── Create reports directory ──────────────────────────────────────────────
+      - name: 📁 Create reports directory
+        run: |
+          mkdir -p reports
+        shell: bash
+
+      # ── Run Tests ─────────────────────────────────────────────────────────────
+      - name: 🧪 Run all tests (headless)
+        if: ${{ github.event.inputs.category == '' }}
+        run: >
+          pytest tests/ -v
+          --headless
+          --html=reports/report-${{ matrix.os }}.html
+          --self-contained-html
+          --tb=short
+          -p no:warnings
+        continue-on-error: true
+
+      - name: 🧪 Run ${{ github.event.inputs.category }} tests (headless)
+        if: ${{ github.event.inputs.category != '' }}
+        run: >
+          pytest tests/ -v
+          --headless
+          -m "${{ github.event.inputs.category }}"
+          --html=reports/report-${{ matrix.os }}.html
+          --self-contained-html
+          --tb=short
+          -p no:warnings
+        continue-on-error: true
+
+      # ── Upload HTML Report ─────────────────────────────────────────────────
+      - name: 📊 Upload HTML Test Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-report-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: tests/orangehrm_login/reports/
+          retention-days: 30
+
+      # ── JUnit XML for GitHub Test Summary ─────────────────────────────────
+      - name: 🧪 Re-run tests with JUnit XML output
+        if: always()
+        run: >
+          pytest tests/ -v
+          --headless
+          --junit-xml=reports/junit-${{ matrix.os }}.xml
+          --tb=short
+          -p no:warnings
+        continue-on-error: true
+
+      - name: 📋 Publish Test Summary
+        uses: EnricoMi/publish-test-results-action@v2
+        if: always() && runner.os == 'Linux'
+        with:
+          files: tests/orangehrm_login/reports/junit-*.xml
+          check_name: "OrangeHRM Login Test Results"
+          comment_mode: always
+          fail_on: test failures
